@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Delta Time — Why Games Decouple Movement from FPS</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --ink: #e7eef7;
+      --muted: #9aabbf;
+      --bad: #ff6b6b;
+      --good: #3dd68c;
+      --accent: #5b9fff;
+      --track: #2a3548;
+      --ship: #f4d35e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      margin: 0 0 0.35rem;
+      letter-spacing: -0.02em;
+    }
+
+    .lede {
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin: 0 0 2rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      margin: 2.25rem 0 0.75rem;
+      border-top: 1px solid var(--track);
+      padding-top: 1.5rem;
+    }
+
+    p, li { color: var(--ink); }
+    .muted { color: var(--muted); }
+
+    .callout {
+      background: var(--panel);
+      border-left: 4px solid var(--accent);
+      padding: 0.9rem 1rem;
+      border-radius: 0 8px 8px 0;
+      margin: 1rem 0;
+    }
+
+    .callout.bad { border-color: var(--bad); }
+    .callout.good { border-color: var(--good); }
+
+    code, .mono {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.92em;
+    }
+
+    code {
+      background: #243044;
+      padding: 0.12em 0.4em;
+      border-radius: 4px;
+    }
+
+    pre {
+      background: #121820;
+      border: 1px solid var(--track);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.9rem;
+    }
+
+    .grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    @media (min-width: 720px) {
+      .grid.two { grid-template-columns: 1fr 1fr; }
+    }
+
+    .card {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 1rem;
+      border: 1px solid var(--track);
+    }
+
+    .card h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1rem;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      margin-bottom: 0.5rem;
+    }
+
+    .tag.bad { background: rgba(255, 107, 107, 0.2); color: var(--bad); }
+    .tag.good { background: rgba(61, 214, 140, 0.2); color: var(--good); }
+
+    canvas {
+      width: 100%;
+      height: 120px;
+      background: #0a0e14;
+      border-radius: 8px;
+      display: block;
+      border: 1px solid var(--track);
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      margin-top: 0.65rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .stats strong { color: var(--ink); }
+
+    .controls {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--track);
+      margin: 1rem 0 1.25rem;
+    }
+
+    .controls label {
+      display: block;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    button {
+      background: var(--accent);
+      color: #081018;
+      border: none;
+      border-radius: 8px;
+      padding: 0.55rem 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+
+    button.secondary {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--track);
+    }
+
+    button:hover { filter: brightness(1.08); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin: 1rem 0;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--track);
+    }
+
+    th { color: var(--muted); font-weight: 600; }
+
+    .formula {
+      font-size: 1.15rem;
+      text-align: center;
+      padding: 1rem;
+      background: #121820;
+      border-radius: 8px;
+      margin: 1rem 0;
+    }
+
+    footer {
+      margin-top: 3rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Delta time: why movement should ignore FPS</h1>
+    <p class="lede">
+      A fast computer draws more pictures per second. The game world should still move at the same speed.
+      This page shows the bug, then the fix, with moving ships you can scrub.
+    </p>
+
+    <div class="callout">
+      <strong>One sentence:</strong>
+      Frames are how often you redraw. Seconds are how the game should think about speed.
+      <span class="mono">dt</span> (delta time) is the bridge: “how many seconds passed since the last frame?”
+    </div>
+
+    <h2>1. Two different speeds (do not mix them up)</h2>
+    <ul>
+      <li><strong>Drawing speed (FPS)</strong> = how many times per second your computer paints a new picture.</li>
+      <li><strong>World speed</strong> = how fast the ship should move in the game, in real seconds (example: 300 pixels per second).</li>
+    </ul>
+    <p class="muted">
+      Decoupling means: world speed is written in seconds. Drawing speed can be anything. They stay separate.
+    </p>
+
+    <h2>2. The bug: move “per frame”</h2>
+    <p>
+      Bad code says: every time I draw, nudge the ship 5 pixels.
+      Then a machine that draws more often moves the ship farther in the same real second.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Machine</th>
+          <th>FPS</th>
+          <th>Move each frame</th>
+          <th>Distance in 1 second</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Old laptop</td>
+          <td>30</td>
+          <td>5 px</td>
+          <td><strong style="color: var(--bad)">150 px/s</strong></td>
+        </tr>
+        <tr>
+          <td>Gaming PC</td>
+          <td>144</td>
+          <td>5 px</td>
+          <td><strong style="color: var(--bad)">720 px/s</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>Same game. Same “5”. Totally different feel. Unfair and broken.</p>
+
+    <h2>3. Watch the bug live</h2>
+    <p class="muted">Both lanes use “move 5 pixels every frame.” Only the fake FPS differs. Drag the sliders, then hit Restart.</p>
+
+    <div class="controls">
+      <div class="row" style="margin-bottom: 0.85rem;">
+        <div style="flex: 1; min-width: 200px;">
+          <label for="fpsSlow">Slow lane FPS: <span id="fpsSlowVal" class="mono">30</span></label>
+          <input id="fpsSlow" type="range" min="15" max="60" value="30" />
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+          <label for="fpsFast">Fast lane FPS: <span id="fpsFastVal" class="mono">144</span></label>
+          <input id="fpsFast" type="range" min="60" max="240" value="144" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="btnRestart">Restart both</button>
+        <button type="button" class="secondary" id="btnPause">Pause / resume</button>
+      </div>
+    </div>
+
+    <div class="grid two">
+      <div class="card">
+        <span class="tag bad">Coupled (broken)</span>
+        <h3>Slow PC · move 5 px / frame</h3>
+        <canvas id="cCoupledSlow" width="420" height="120"></canvas>
+        <div class="stats">
+          <span>FPS target: <strong id="s1fps">30</strong></span>
+          <span>Distance this run: <strong id="s1dist">0</strong> px</span>
+          <span>Speed: <strong id="s1spd">0</strong> px/s</span>
+        </div>
+      </div>
+      <div class="card">
+        <span class="tag bad">Coupled (broken)</span>
+        <h3>Fast PC · move 5 px / frame</h3>
+        <canvas id="cCoupledFast" width="420" height="120"></canvas>
+        <div class="stats">
+          <span>FPS target: <strong id="s2fps">144</strong></span>
+          <span>Distance this run: <strong id="s2dist">0</strong> px</span>
+          <span>Speed: <strong id="s2spd">0</strong> px/s</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout bad">
+      After a few seconds the fast ship is way ahead. Not because the player is better. Because the computer drew more frames.
+    </div>
+
+    <h2>4. The fix: move “per second,” multiply by dt</h2>
+    <p>
+      <strong>Delta time (<span class="mono">dt</span>)</strong> = seconds that passed since the last frame.
+      At 60 FPS, <span class="mono">dt</span> is about <span class="mono">1/60 ≈ 0.0167</span> seconds.
+      At 30 FPS, <span class="mono">dt</span> is about <span class="mono">0.033</span> seconds (bigger gap between frames).
+    </p>
+
+    <div class="formula mono">
+      new_x = old_x + (speed_pixels_per_second × dt)
+    </div>
+
+    <p>Example: speed = 300 px/s</p>
+    <ul>
+      <li>Slow frame: <span class="mono">dt = 1/30</span> → move <span class="mono">300 × (1/30) = 10</span> px that frame</li>
+      <li>Fast frame: <span class="mono">dt = 1/144</span> → move <span class="mono">300 × (1/144) ≈ 2.08</span> px that frame</li>
+    </ul>
+    <p>
+      Over one real second, both add up to about <strong>300 pixels</strong>.
+      Tiny steps more often, or bigger steps less often. Same trip.
+    </p>
+
+    <pre><code># Broken (tied to frames)
+ship.x += 5
+
+# Fixed (tied to real time)
+ship.x += 300 * dt   # 300 pixels per second</code></pre>
+
+    <h2>5. Watch the fix live</h2>
+    <p class="muted">Same FPS sliders as above. Both ships use 300 px/s × dt. They should stay lined up.</p>
+
+    <div class="grid two">
+      <div class="card">
+        <span class="tag good">Decoupled (correct)</span>
+        <h3>Slow PC · 300 px/s × dt</h3>
+        <canvas id="cDecoupledSlow" width="420" height="120"></canvas>
+        <div class="stats">
+          <span>FPS target: <strong id="s3fps">30</strong></span>
+          <span>Distance this run: <strong id="s3dist">0</strong> px</span>
+          <span>Speed: <strong id="s3spd">0</strong> px/s</span>
+        </div>
+      </div>
+      <div class="card">
+        <span class="tag good">Decoupled (correct)</span>
+        <h3>Fast PC · 300 px/s × dt</h3>
+        <canvas id="cDecoupledFast" width="420" height="120"></canvas>
+        <div class="stats">
+          <span>FPS target: <strong id="s4fps">144</strong></span>
+          <span>Distance this run: <strong id="s4dist">0</strong> px</span>
+          <span>Speed: <strong id="s4spd">0</strong> px/s</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout good">
+      Same real-world second → same distance. Drawing can stutter; the math still aims at “300 per second.”
+    </div>
+
+    <h2>6. Tiny glossary</h2>
+    <ul>
+      <li><strong>Frame</strong> = one drawn picture of the game.</li>
+      <li><strong>FPS</strong> = frames per second (how often you draw).</li>
+      <li><strong>dt / delta time</strong> = seconds between this frame and the last one.</li>
+      <li><strong>Coupled</strong> = movement depends on how often you draw (bad for speed).</li>
+      <li><strong>Decoupled</strong> = movement depends on real time via dt (what you want).</li>
+    </ul>
+
+    <h2>7. Pygame mental model</h2>
+    <p>
+      Your loop still runs “once per frame.” That is fine.
+      Inside the loop, ask the clock how much time passed, then move using that number.
+    </p>
+    <pre><code>clock = pygame.time.Clock()
+speed = 300  # pixels per second
+
+while running:
+    dt = clock.tick(60) / 1000  # milliseconds → seconds
+    # now move with: position += speed * dt</code></pre>
+    <p class="muted">
+      <span class="mono">clock.tick(60)</span> both caps how fast you try to loop and returns how many milliseconds the last frame took.
+      Divide by 1000 so <span class="mono">dt</span> is in seconds.
+    </p>
+
+    <footer>
+      Local learning page for Hector · Boot.dev asteroid / Pygame ·
+      open this file in a browser (double-click or drag into Chrome).
+    </footer>
+  </main>
+
+  <script>
+    const PX_PER_FRAME = 5;
+    const SPEED_PER_SEC = 300;
+
+    const fpsSlow = document.getElementById("fpsSlow");
+    const fpsFast = document.getElementById("fpsFast");
+    const fpsSlowVal = document.getElementById("fpsSlowVal");
+    const fpsFastVal = document.getElementById("fpsFastVal");
+
+    let paused = false;
+    let lastWall = performance.now();
+
+    function makeLane(canvasId, mode) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext("2d");
+      return {
+        canvas,
+        ctx,
+        mode, // "coupled" | "decoupled"
+        x: 24,
+        dist: 0,
+        accum: 0,
+        runStart: performance.now(),
+      };
+    }
+
+    const lanes = [
+      makeLane("cCoupledSlow", "coupled"),
+      makeLane("cCoupledFast", "coupled"),
+      makeLane("cDecoupledSlow", "decoupled"),
+      makeLane("cDecoupledFast", "decoupled"),
+    ];
+
+    function targetFps(index) {
+      const slow = Number(fpsSlow.value);
+      const fast = Number(fpsFast.value);
+      return index % 2 === 0 ? slow : fast;
+    }
+
+    function resetAll() {
+      const now = performance.now();
+      lastWall = now;
+      for (const lane of lanes) {
+        lane.x = 24;
+        lane.dist = 0;
+        lane.accum = 0;
+        lane.runStart = now;
+      }
+      updateLabels();
+    }
+
+    function updateLabels() {
+      fpsSlowVal.textContent = fpsSlow.value;
+      fpsFastVal.textContent = fpsFast.value;
+      document.getElementById("s1fps").textContent = fpsSlow.value;
+      document.getElementById("s2fps").textContent = fpsFast.value;
+      document.getElementById("s3fps").textContent = fpsSlow.value;
+      document.getElementById("s4fps").textContent = fpsFast.value;
+    }
+
+    function drawLane(lane) {
+      const { ctx, canvas, x } = lane;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // track
+      ctx.fillStyle = "#152033";
+      ctx.fillRect(0, h * 0.55, w, 4);
+
+      // finish marks every 100px
+      ctx.fillStyle = "#2a3a52";
+      for (let m = 100; m < w; m += 100) {
+        ctx.fillRect(m, h * 0.45, 2, h * 0.3);
+      }
+
+      // ship
+      const y = h * 0.5;
+      ctx.fillStyle = "#f4d35e";
+      ctx.beginPath();
+      ctx.moveTo(x + 18, y);
+      ctx.lineTo(x - 10, y - 12);
+      ctx.lineTo(x - 10, y + 12);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#9aabbf";
+      ctx.font = "12px ui-monospace, monospace";
+      ctx.fillText("→", 8, 18);
+    }
+
+    function stepLane(lane, index, wallDt) {
+      const fps = targetFps(index);
+      const framePeriod = 1 / fps; // seconds between simulated frames
+      lane.accum += wallDt;
+
+      while (lane.accum >= framePeriod) {
+        lane.accum -= framePeriod;
+        let step = 0;
+        if (lane.mode === "coupled") {
+          step = PX_PER_FRAME;
+        } else {
+          step = SPEED_PER_SEC * framePeriod;
+        }
+        lane.x += step;
+        lane.dist += step;
+        const maxX = lane.canvas.width - 40;
+        if (lane.x > maxX) {
+          lane.x = 24;
+        }
+      }
+    }
+
+    function refreshStats() {
+      const now = performance.now();
+      const ids = [
+        ["s1dist", "s1spd", 0],
+        ["s2dist", "s2spd", 1],
+        ["s3dist", "s3spd", 2],
+        ["s4dist", "s4spd", 3],
+      ];
+      for (const [distId, spdId, i] of ids) {
+        const lane = lanes[i];
+        const elapsed = Math.max(0.001, (now - lane.runStart) / 1000);
+        document.getElementById(distId).textContent = lane.dist.toFixed(0);
+        document.getElementById(spdId).textContent = (lane.dist / elapsed).toFixed(0);
+      }
+    }
+
+    function frame(now) {
+      const wallDt = Math.min(0.05, (now - lastWall) / 1000);
+      lastWall = now;
+
+      if (!paused) {
+        lanes.forEach((lane, i) => stepLane(lane, i, wallDt));
+      }
+
+      lanes.forEach(drawLane);
+      refreshStats();
+      requestAnimationFrame(frame);
+    }
+
+    fpsSlow.addEventListener("input", updateLabels);
+    fpsFast.addEventListener("input", updateLabels);
+    document.getElementById("btnRestart").addEventListener("click", resetAll);
+    document.getElementById("btnPause").addEventListener("click", () => {
+      paused = !paused;
+      if (!paused) lastWall = performance.now();
+    });
+
+    updateLabels();
+    resetAll();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
