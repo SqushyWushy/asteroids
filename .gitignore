@@ -11,3 +11,4 @@ wheels/
 
 # logger.py -- chapter 2 -- lesson 2
 game_state.jsonl
+game_events.jsonl
